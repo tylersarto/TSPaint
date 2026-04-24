@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>if(localStorage.getItem("theme")==="dark")document.documentElement.classList.add("dark");</script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TSPaint</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Inter:wght@300;400;500;700;900&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+
+    <div class="home-hero">
+
+      <!-- Sidebar -->
+      <aside class="home-sidebar">
+        <div class="home-sidebar-inner">
+
+          <div class="home-sidebar-bottom-group">
+            <div class="home-sidebar-links">
+              <a href="https://www.tylersarto.design" target="_blank" rel="noopener" class="home-sidebar-link">tylersarto.design</a>
+              <a href="https://linkedin.com/in/tylersarto/" target="_blank" rel="noopener noreferrer" class="home-sidebar-link">LinkedIn</a>
+              <a href="https://dribbble.com/tylersarto" target="_blank" rel="noopener noreferrer" class="home-sidebar-link">Dribbble</a>
+              <a href="https://medium.com/@tylersarto" target="_blank" rel="noopener noreferrer" class="home-sidebar-link">Medium</a>
+            </div>
+            <div class="home-sidebar-foot">
+              <span class="home-copyright">© 2026 Tyler Sarto</span>
+              <button class="nav-theme-btn" aria-label="Toggle dark mode" role="switch">
+                <span class="theme-track">
+                  <span class="theme-thumb">
+                    <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+
+      <!-- Paint canvas -->
+      <div class="home-canvas-area">
+
+        <!-- Top bar: mode switcher + screenshot -->
+        <div class="tsp-topbar" id="tspTopbar">
+          <div class="tsp-mode-switcher" id="tspModeSwitcher">
+            <div class="tsp-mode-indicator" id="tspModeIndicator"></div>
+            <button class="tsp-mode-btn is-active" data-mode="illustrator">Illustrator</button>
+            <button class="tsp-mode-btn" data-mode="designer">Designer</button>
+          </div>
+          <button class="tsp-screenshot-btn" id="paintCapture">📸 Take a screenshot</button>
+        </div>
+
+        <!-- Canvas -->
+        <canvas id="paintCanvas" class="paint-canvas"></canvas>
+
+        <!-- Illustrator toolbar -->
+        <div class="paint-toolbar" id="paintToolbar">
+
+          <div class="paint-tb-section">
+            <button class="paint-tool-btn is-active" data-tool="pencil" title="Pencil">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              Pencil
+            </button>
+            <button class="paint-tool-btn" data-tool="pen" title="Pen">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+              Pen
+            </button>
+            <button class="paint-tool-btn" data-tool="brush" title="Brush">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1 1 2.65 2.02 5 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-4-3.02z"/></svg>
+              Brush
+            </button>
+            <button class="paint-tool-btn" data-tool="fill" title="Paint Bucket">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.5 8.5a5.5 5.5 0 0 0 7.78 7.78L19 11Z"/><path d="m19 11 2 2a2.5 2.5 0 0 1 0 3.5"/></svg>
+              Fill
+            </button>
+            <button class="paint-tool-btn" data-tool="spray" title="Spray Can">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h.01M7 5h.01M11 3h.01M3 7h.01M5 5h.01"/><rect x="9" y="9" width="7" height="12" rx="1"/><path d="M11 9V7a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/></svg>
+              Spray
+            </button>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <button class="paint-tool-btn" data-tool="eraser" title="Eraser">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+              Eraser
+            </button>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <div class="paint-active-color" id="paintActiveColor" title="Current color"></div>
+            <div class="paint-color-grid" id="paintColorGrid"></div>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <div class="paint-size-wrap">
+              <span class="paint-size-label">Size</span>
+              <button class="paint-size-btn" id="paintSizeMinus">−</button>
+              <input type="number" class="paint-size-value" id="paintSizeValue" value="12" min="1" max="30">
+              <button class="paint-size-btn" id="paintSizePlus">+</button>
+            </div>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <button class="paint-history-btn" id="paintUndo" title="Undo" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              Undo
+            </button>
+            <button class="paint-history-btn" id="paintRedo" title="Redo" disabled>
+              Redo
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+            </button>
+          </div>
+
+          <button class="paint-clear-btn" id="paintClear" style="margin-left:auto;">Clear</button>
+
+        </div>
+
+        <!-- Designer toolbar -->
+        <div class="paint-toolbar" id="designerToolbar" style="display:none">
+
+          <div class="paint-tb-section">
+            <button class="paint-tool-btn is-active" data-dsgn-tool="move" title="Move">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 1-4 7z"/></svg>
+              Move
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="pen" title="Pen (dbl-click to finish)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+              Pen
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="rect" title="Rectangle">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1"/></svg>
+              Rect
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="circle" title="Circle / Ellipse">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+              Circle
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="triangle" title="Triangle">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 18H3z"/></svg>
+              Triangle
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="quad" title="Quadrangle (click 4 points)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="4,4 20,6 18,20 2,18"/></svg>
+              Quad
+            </button>
+            <button class="paint-tool-btn" data-dsgn-tool="text" title="Text">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+              Text
+            </button>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <div class="dsgn-color-indicator" title="Fill (front) / Stroke (back)">
+              <div class="dsgn-stroke-sq" id="dsgnStrokeSwatch" title="Stroke color"></div>
+              <div class="dsgn-fill-sq"   id="dsgnFillSwatch"   title="Fill color"></div>
+            </div>
+            <div class="paint-color-grid" id="dsgnColorGrid"></div>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section" id="dsgnTextOpts" style="display:none; gap:6px;">
+            <select class="dsgn-select" id="dsgnFontFamily" title="Font family">
+              <option value="Inter">Inter</option>
+              <option value="Roboto">Roboto</option>
+              <option value="'Helvetica Neue', Helvetica, Arial">Helvetica</option>
+              <option value="Georgia">Georgia</option>
+            </select>
+            <div class="paint-size-wrap">
+              <span class="paint-size-label">Size</span>
+              <button class="paint-size-btn" id="dsgnSizeMinus">−</button>
+              <input type="number" class="paint-size-value" id="dsgnSizeValue" value="24" min="8" max="200">
+              <button class="paint-size-btn" id="dsgnSizePlus">+</button>
+            </div>
+            <select class="dsgn-select" id="dsgnFontWeight" title="Font weight">
+              <option value="300">Light</option>
+              <option value="400" selected>Regular</option>
+              <option value="500">Medium</option>
+              <option value="700">Bold</option>
+              <option value="900">Black</option>
+            </select>
+            <div class="paint-tb-divider" style="height:22px;"></div>
+          </div>
+
+          <div class="paint-tb-section" id="dsgnStrokeOpts">
+            <div class="paint-size-wrap">
+              <span class="paint-size-label">Stroke</span>
+              <button class="paint-size-btn" id="dsgnStrokeMinus">−</button>
+              <input type="number" class="paint-size-value" id="dsgnStrokeValue" value="2" min="1" max="30">
+              <button class="paint-size-btn" id="dsgnStrokePlus">+</button>
+            </div>
+          </div>
+
+          <div class="paint-tb-divider"></div>
+
+          <div class="paint-tb-section">
+            <button class="paint-history-btn" id="dsgnUndo" title="Undo" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              Undo
+            </button>
+            <button class="paint-history-btn" id="dsgnRedo" title="Redo" disabled>
+              Redo
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+            </button>
+          </div>
+
+          <button class="paint-clear-btn" id="dsgnClear" style="margin-left:auto;">Clear</button>
+
+        </div>
+
+      </div>
+    </div>
+
+    <script src="paint.js"></script>
+    <script>
+      requestAnimationFrame(() => document.body.classList.add('is-ready'));
+    </script>
+
+  </body>
+</html>
