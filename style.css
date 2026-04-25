@@ -433,6 +433,31 @@ html.dark .dsgn-fill-sq   { border-color: #888; }
 .dsgn-fill-sq.is-active-target   { outline: 2px solid #3b82f6; outline-offset: 1px; z-index: 2; }
 .dsgn-stroke-sq.is-active-target { outline: 2px solid #3b82f6; outline-offset: 1px; z-index: 2; }
 
+/* ── Tool hotkey tooltip ── */
+.paint-tool-btn[data-hotkey] { position: relative; }
+.paint-tool-btn[data-hotkey]:hover::after {
+  content: attr(data-hotkey);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  font-size: 10px;
+  font-family: var(--font);
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 50;
+  letter-spacing: 0.02em;
+}
+html.dark .paint-tool-btn[data-hotkey]:hover::after {
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(6px);
+}
+
 /* ── Tablet landscape (e.g. iPad Pro 11" 1194×834) ── */
 @media (min-width: 769px) and (max-width: 1280px) {
   .paint-toolbar { padding: 5px 8px; gap: 4px; }

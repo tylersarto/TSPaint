@@ -26,7 +26,8 @@
   const isDark = () => document.documentElement.classList.contains('dark');
   const bgColor = () => isDark() ? '#1a1a18' : '#ffffff';
 
-  let activeMode = 'illustrator';
+  /* ── Shared state ── */
+  let activeMode = 'illustrator'; // 'illustrator' | 'designer'
 
   /* ──────────────────────────────────────────
      RESIZE
@@ -50,8 +51,11 @@
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(tmp, 0, 0);
     } else {
-      canvas.width  = w;
-      canvas.height = h;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width  = w + 'px';
+      canvas.style.height = h + 'px';
       renderDesigner();
     }
   }
@@ -59,7 +63,7 @@
   window.addEventListener('resize', resizeCanvas);
 
   /* ──────────────────────────────────────────
-     MODE INDICATOR
+     MODE INDICATOR (animate-ui spring slide)
   ────────────────────────────────────────── */
   const modeIndicator  = document.getElementById('tspModeIndicator');
   const modeSwitcherEl = document.getElementById('tspModeSwitcher');
@@ -86,8 +90,7 @@
   /* ──────────────────────────────────────────
      MODE SWITCHING
   ────────────────────────────────────────── */
-  let illustratorSnapshot = null;
-  let dsgnSaved = [];
+  let illustratorSnapshot = null; // offscreen canvas saved when leaving illustrator
 
   document.querySelectorAll('.tsp-mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -99,25 +102,40 @@
       updateModeIndicator();
 
       if (mode === 'designer') {
-        illustratorSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        // Save illustrator canvas as an offscreen canvas (avoids ImageData size-mismatch issues)
+        const off = document.createElement('canvas');
+        off.width = canvas.width; off.height = canvas.height;
+        off.getContext('2d').drawImage(canvas, 0, 0);
+        illustratorSnapshot = off;
+
         activeMode = 'designer';
         document.getElementById('paintToolbar').style.display    = 'none';
         document.getElementById('designerToolbar').style.display = '';
         canvas.style.cursor = 'default';
         cursorEl.style.display = 'none';
-        if (dsgnSaved.length) dsgnObjects = dsgnSaved.slice();
-        resizeCanvas();
+        resizeCanvas(); // sets DPR dimensions and calls renderDesigner() with current dsgnObjects
       } else {
-        dsgnSaved = dsgnObjects.slice();
         activeMode = 'illustrator';
         document.getElementById('designerToolbar').style.display = 'none';
         document.getElementById('paintToolbar').style.display    = '';
         cancelPen(); cancelQuad();
         dismissTextOverlay(false);
-        resizeCanvas();
+
+        // Size canvas for illustrator (CSS px, no DPR scaling) and restore saved artwork
+        const topbar  = document.getElementById('tspTopbar');
+        const toolbar = document.getElementById('paintToolbar');
+        const w = canvasArea.clientWidth;
+        const h = canvasArea.clientHeight - topbar.offsetHeight - toolbar.offsetHeight;
+        canvas.width        = w;
+        canvas.height       = h;
+        canvas.style.width  = '';
+        canvas.style.height = '';
+        ctx.fillStyle = bgColor();
+        ctx.fillRect(0, 0, w, h);
         if (illustratorSnapshot) {
-          try { ctx.putImageData(illustratorSnapshot, 0, 0); } catch(e) {}
+          ctx.drawImage(illustratorSnapshot, 0, 0, w, h);
         }
+
         canvas.style.cursor = 'none';
         updateCursorStyle();
       }
@@ -276,6 +294,9 @@
   function getPos(e) {
     const rect = canvas.getBoundingClientRect();
     const src  = e.touches ? e.touches[0] : e;
+    if (activeMode === 'designer') {
+      return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+    }
     return {
       x: (src.clientX - rect.left) * (canvas.width  / rect.width),
       y: (src.clientY - rect.top)  * (canvas.height / rect.height),
@@ -418,35 +439,52 @@
   ══════════════════════════════════════════ */
   let dsgnTool        = 'move';
   let dsgnStrokeColor = '#000000';
-  let dsgnFillColor   = 'rgba(0,0,0,0)';
-  let dsgnColorTarget = 'stroke';
+  let dsgnFillColor   = 'rgba(0,0,0,0)'; // transparent by default
+  let dsgnColorTarget = 'stroke';         // which swatch the palette controls
   let dsgnStroke      = 2;
   let dsgnObjects     = [];
   let dsgnSelected    = null;
 
+  // Drag state (document-level)
   let dsgnDragging  = false;
   let dsgnDragStart = null;
-  let dsgnObjOrigin = null;
+  let dsgnObjOrigin = null; // deep clone of object at drag start
 
+  // Resize state (document-level)
   let dsgnResizing     = false;
-  let dsgnResizeHandle = null;
-  let dsgnResizeOrigin = null;
+  let dsgnResizeHandle = null; // 'tl'|'tc'|'tr'|'ml'|'mr'|'bl'|'bc'|'br'
+  let dsgnResizeOrigin = null; // {x,y,w,h} normalized at resize start
 
+  // Shape draw state
   let dsgnDrawing   = false;
   let dsgnDrawStart = null;
 
-  let penPath      = [];
-  let penActive    = false;
-  let penLastClick = 0;
+  // Pen path state — each point: { x, y, cpIn: {x,y}|null, cpOut: {x,y}|null }
+  let penPath       = [];
+  let penActive     = false;
+  let penLastClick  = 0;
+  let penMouseDown  = false;   // user is currently dragging out a handle
+  let penMousePos   = null;    // current cursor (for rubber-band)
+  let penEditTarget = null;    // { type:'anchor'|'cpIn'|'cpOut', ptIdx, startPos, ptsOrigin }
 
+  // Quad state
   let quadPoints = [];
 
+  // Text state
   let dsgnTextFont   = 'Inter';
   let dsgnTextSize   = 24;
   let dsgnTextWeight = '400';
   let textOverlay    = null;
   let textPlaceX = 0, textPlaceY = 0;
 
+  // Marquee / multi-select state
+  let dsgnSelectedSet    = new Set();
+  let dsgnMarquee        = null;
+  let dsgnMultiDragging  = false;
+  let dsgnMultiDragStart = null;
+  let dsgnMultiOrigins   = [];
+
+  // Undo / redo
   const dsgnUndoStack = [], dsgnRedoStack = [];
   const dsgnUndoBtn = document.getElementById('dsgnUndo');
   const dsgnRedoBtn = document.getElementById('dsgnRedo');
@@ -510,6 +548,7 @@
         dsgnStrokeColor = c;
       }
       updateColorIndicator();
+      // Apply to selected object immediately
       if (dsgnSelected !== null) {
         dsgnSaveSnapshot();
         const obj = dsgnObjects[dsgnSelected];
@@ -528,10 +567,11 @@
   /* ── Designer tool buttons ── */
   document.querySelectorAll('[data-dsgn-tool]').forEach(btn => {
     btn.addEventListener('click', () => {
-      cancelPen(); cancelQuad(); dismissTextOverlay(false);
+      commitPen(); cancelQuad(); dismissTextOverlay(false);
       document.querySelectorAll('[data-dsgn-tool]').forEach(b => b.classList.remove('is-active'));
       btn.classList.add('is-active');
       dsgnTool = btn.dataset.dsgnTool;
+      if (dsgnTool !== 'move') { dsgnSelected = null; dsgnSelectedSet.clear(); renderDesigner(); }
       updateMoveCursor();
       updateToolbarPanels();
     });
@@ -549,6 +589,28 @@
       strokeOpts.style.display = (dsgnTool === 'move' || dsgnTool === 'text') ? 'none' : '';
     }
   }
+
+  /* ── Designer hotkeys ── */
+  document.addEventListener('keydown', e => {
+    if (activeMode !== 'designer') return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    const key = e.key;
+
+    // Cmd+Z / Cmd+Shift+Z undo / redo
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && key === 'z') { e.preventDefault(); document.getElementById('dsgnUndo').click(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey  && key === 'z') { e.preventDefault(); document.getElementById('dsgnRedo').click(); return; }
+
+    let toolToActivate = null;
+    if (!e.shiftKey && key === 'v') toolToActivate = 'move';
+    else if (!e.shiftKey && key === 'p') toolToActivate = 'pen';
+    else if (!e.shiftKey && key === 'r') toolToActivate = 'rect';
+    else if (!e.shiftKey && key === 'o') toolToActivate = 'circle';
+    else if (e.shiftKey  && key === 'R') toolToActivate = 'triangle';
+    else if (!e.shiftKey && key === 't') toolToActivate = 'text';
+    if (!toolToActivate) return;
+    e.preventDefault();
+    document.querySelector(`[data-dsgn-tool="${toolToActivate}"]`)?.click();
+  });
 
   /* ── Stroke width ── */
   const dsgnStrokeEl = document.getElementById('dsgnStrokeValue');
@@ -613,7 +675,7 @@
     tc:'ns-resize',   bc:'ns-resize',
     ml:'ew-resize',   mr:'ew-resize',
   };
-  const HR = 6;
+  const HR = 6; // handle hit radius in canvas px
 
   function getHandlePoints(obj) {
     if (!obj || obj.type === 'text' || obj.type === 'pen' || obj.type === 'quad') return null;
@@ -652,24 +714,64 @@
      RENDER
   ────────────────────────────────────────── */
   function renderDesigner(previewObj) {
+    const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = bgColor();
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    dsgnObjects.forEach((obj, i) => drawDsgnObj(obj, i === dsgnSelected));
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    dsgnObjects.forEach((obj, i) => drawDsgnObj(obj, i === dsgnSelected, dsgnSelectedSet.has(i) && i !== dsgnSelected));
     if (previewObj) drawDsgnObj(previewObj, false);
 
     if (penActive && penPath.length) {
       ctx.save();
-      ctx.strokeStyle = dsgnStrokeColor; ctx.lineWidth = dsgnStroke;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.beginPath(); ctx.moveTo(penPath[0].x, penPath[0].y);
-      penPath.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
-      ctx.stroke();
-      penPath.forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#3b82f6'; ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // Draw completed segments
+      ctx.beginPath();
+      ctx.moveTo(penPath[0].x, penPath[0].y);
+      for (let i = 1; i < penPath.length; i++) {
+        const f = penPath[i-1], t = penPath[i];
+        ctx.bezierCurveTo(
+          (f.cpOut || f).x, (f.cpOut || f).y,
+          (t.cpIn  || t).x, (t.cpIn  || t).y,
+          t.x, t.y
+        );
+      }
+      ctx.strokeStyle = dsgnStrokeColor; ctx.lineWidth = dsgnStroke; ctx.stroke();
+
+      // Rubber-band from last point to cursor
+      if (penMousePos) {
+        const last = penPath[penPath.length - 1];
+        ctx.beginPath(); ctx.moveTo(last.x, last.y);
+        ctx.bezierCurveTo(
+          (last.cpOut || last).x, (last.cpOut || last).y,
+          penMousePos.x, penMousePos.y,
+          penMousePos.x, penMousePos.y
+        );
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = dsgnStrokeColor; ctx.lineWidth = dsgnStroke; ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Handle lines + dots
+      penPath.forEach((p, i) => {
+        ctx.strokeStyle = 'rgba(100,100,100,0.6)'; ctx.lineWidth = 1;
+        if (p.cpIn  && i > 0) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.cpIn.x,  p.cpIn.y);  ctx.stroke(); }
+        if (p.cpOut)           { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.cpOut.x, p.cpOut.y); ctx.stroke(); }
+        // Anchor square
+        ctx.fillStyle = i === 0 ? '#3b82f6' : '#fff';
+        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.rect(p.x - 4, p.y - 4, 8, 8); ctx.fill(); ctx.stroke();
+        // Handle circles
+        [p.cpIn && i > 0 ? p.cpIn : null, p.cpOut].forEach(h => {
+          if (!h) return;
+          ctx.beginPath(); ctx.arc(h.x, h.y, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff'; ctx.fill();
+          ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5; ctx.stroke();
+        });
       });
+
       ctx.restore();
     }
 
@@ -686,9 +788,37 @@
       });
       ctx.restore();
     }
+
+    if (dsgnMarquee) {
+      const mx = Math.min(dsgnMarquee.x1, dsgnMarquee.x2);
+      const my = Math.min(dsgnMarquee.y1, dsgnMarquee.y2);
+      const mw = Math.abs(dsgnMarquee.x2 - dsgnMarquee.x1);
+      const mh = Math.abs(dsgnMarquee.y2 - dsgnMarquee.y1);
+      ctx.save();
+      ctx.fillStyle = 'rgba(59,130,246,0.07)';
+      ctx.fillRect(mx, my, mw, mh);
+      ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      ctx.strokeRect(mx, my, mw, mh); ctx.setLineDash([]);
+      ctx.restore();
+    }
+    ctx.restore(); // undo dpr scale
   }
 
-  function drawDsgnObj(obj, selected) {
+  function getObjBBox(obj) {
+    if (obj.pts) {
+      const xs = obj.pts.map(p => p.x), ys = obj.pts.map(p => p.y);
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    }
+    if (obj.type === 'text') {
+      ctx.font = `${obj.weight||'400'} ${obj.fontSize||24}px ${obj.font||'Inter'}`;
+      const tw = ctx.measureText(obj.content || '').width;
+      const th = obj.fontSize || 24;
+      return { x: obj.x, y: obj.y - th, w: tw, h: th };
+    }
+    return getBounds(obj);
+  }
+
+  function drawDsgnObj(obj, selected, inSet) {
     ctx.save();
     ctx.lineWidth = obj.strokeWidth || 2;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -699,6 +829,7 @@
       ctx.fillStyle = obj.fillColor || 'rgba(0,0,0,0)'; ctx.fill();
       if (obj.color && obj.color !== 'rgba(0,0,0,0)') { ctx.strokeStyle = obj.color; ctx.stroke(); }
       if (selected) drawHandles(x, y, w, h);
+      else if (inSet) drawSetHighlight(x, y, w, h);
 
     } else if (obj.type === 'circle') {
       const { x, y, w, h } = getBounds(obj);
@@ -706,6 +837,7 @@
       ctx.fillStyle = obj.fillColor || 'rgba(0,0,0,0)'; ctx.fill();
       if (obj.color && obj.color !== 'rgba(0,0,0,0)') { ctx.strokeStyle = obj.color; ctx.stroke(); }
       if (selected) drawHandles(x, y, w, h);
+      else if (inSet) drawSetHighlight(x, y, w, h);
 
     } else if (obj.type === 'triangle') {
       const { x, y, w, h } = getBounds(obj);
@@ -713,38 +845,83 @@
       ctx.fillStyle = obj.fillColor || 'rgba(0,0,0,0)'; ctx.fill();
       if (obj.color && obj.color !== 'rgba(0,0,0,0)') { ctx.strokeStyle = obj.color; ctx.stroke(); }
       if (selected) drawHandles(x, y, w, h);
+      else if (inSet) drawSetHighlight(x, y, w, h);
 
-    } else if (obj.type === 'quad' || obj.type === 'pen') {
+    } else if (obj.type === 'quad') {
       ctx.beginPath(); ctx.moveTo(obj.pts[0].x, obj.pts[0].y);
       obj.pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
-      if (obj.type === 'quad') ctx.closePath();
+      ctx.closePath();
       if (obj.fillColor) { ctx.fillStyle = obj.fillColor; ctx.fill(); }
       ctx.strokeStyle = obj.color || '#000000'; ctx.stroke();
+      const qxs = obj.pts.map(p => p.x), qys = obj.pts.map(p => p.y);
+      const qbx = Math.min(...qxs), qby = Math.min(...qys);
+      const qbw = Math.max(...qxs) - qbx, qbh = Math.max(...qys) - qby;
       if (selected) {
-        const xs = obj.pts.map(p => p.x), ys = obj.pts.map(p => p.y);
-        const bx = Math.min(...xs), by = Math.min(...ys);
-        const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
         ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
-        ctx.strokeRect(bx - 4, by - 4, bw + 8, bh + 8); ctx.setLineDash([]);
+        ctx.strokeRect(qbx - 4, qby - 4, qbw + 8, qbh + 8); ctx.setLineDash([]);
         obj.pts.forEach(p => {
           ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-          ctx.fillStyle = '#fff'; ctx.fill();
-          ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.stroke();
         });
+      } else if (inSet) drawSetHighlight(qbx - 4, qby - 4, qbw + 8, qbh + 8);
+
+    } else if (obj.type === 'pen') {
+      // Draw bezier path
+      ctx.beginPath(); ctx.moveTo(obj.pts[0].x, obj.pts[0].y);
+      for (let i = 1; i < obj.pts.length; i++) {
+        const f = obj.pts[i-1], t = obj.pts[i];
+        ctx.bezierCurveTo(
+          (f.cpOut || f).x, (f.cpOut || f).y,
+          (t.cpIn  || t).x, (t.cpIn  || t).y,
+          t.x, t.y
+        );
       }
+      if (obj.closed) ctx.closePath();
+      if (obj.fillColor) { ctx.fillStyle = obj.fillColor; ctx.fill(); }
+      ctx.strokeStyle = obj.color || '#000000'; ctx.stroke();
+      const pxs = obj.pts.map(p => p.x), pys = obj.pts.map(p => p.y);
+      const pbx = Math.min(...pxs), pby = Math.min(...pys);
+      const pbw = Math.max(...pxs) - pbx, pbh = Math.max(...pys) - pby;
+      if (selected) {
+        // Edit handles: lines, anchors, handle dots
+        obj.pts.forEach((p, i) => {
+          ctx.strokeStyle = 'rgba(100,100,100,0.5)'; ctx.lineWidth = 1;
+          if (p.cpIn  && i > 0) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.cpIn.x,  p.cpIn.y);  ctx.stroke(); }
+          if (p.cpOut)           { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.cpOut.x, p.cpOut.y); ctx.stroke(); }
+        });
+        obj.pts.forEach((p, i) => {
+          // Anchor square
+          ctx.fillStyle = '#fff'; ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.rect(p.x - 4, p.y - 4, 8, 8); ctx.fill(); ctx.stroke();
+          // Handle circles
+          [p.cpIn && i > 0 ? p.cpIn : null, p.cpOut].forEach(h => {
+            if (!h) return;
+            ctx.beginPath(); ctx.arc(h.x, h.y, 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1.5; ctx.stroke();
+          });
+        });
+      } else if (inSet) drawSetHighlight(pbx - 4, pby - 4, pbw + 8, pbh + 8);
 
     } else if (obj.type === 'text') {
       ctx.font = `${obj.weight || '400'} ${obj.fontSize || 24}px ${obj.font || 'Inter'}, sans-serif`;
       ctx.fillStyle = obj.color || '#000000';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(obj.content, obj.x, obj.y);
+      const tw = ctx.measureText(obj.content).width;
+      const th = obj.fontSize || 24;
       if (selected) {
-        const tw = ctx.measureText(obj.content).width;
-        const th = obj.fontSize || 24;
         ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
         ctx.strokeRect(obj.x - 4, obj.y - th - 4, tw + 8, th + 10); ctx.setLineDash([]);
-      }
+      } else if (inSet) drawSetHighlight(obj.x - 4, obj.y - th - 4, tw + 8, th + 10);
     }
+    ctx.restore();
+  }
+
+  function drawSetHighlight(x, y, w, h) {
+    ctx.save();
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.globalAlpha = 0.5;
+    ctx.strokeRect(x, y, w, h); ctx.setLineDash([]); ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -775,6 +952,7 @@
       const { x:bx, y:by, w, h } = getBounds(obj);
       const hasFill = obj.fillColor && obj.fillColor !== 'rgba(0,0,0,0)';
       if (hasFill) return x >= bx && x <= bx+w && y >= by && y <= by+h;
+      // Stroke-only: hit near edges
       return x >= bx-M && x <= bx+w+M && y >= by-M && y <= by+h+M &&
              !(x > bx+M && x < bx+w-M && y > by+M && y < by+h-M);
     }
@@ -793,6 +971,17 @@
       return x >= obj.x-M && x <= obj.x+tw+M && y >= obj.y-th-M && y <= obj.y+M;
     }
     return false;
+  }
+
+  function hitPenPt(obj, px, py) {
+    const R = 7;
+    for (let i = 0; i < obj.pts.length; i++) {
+      const p = obj.pts[i];
+      if (Math.abs(px - p.x) <= R && Math.abs(py - p.y) <= R) return { type: 'anchor', ptIdx: i };
+      if (p.cpIn  && i > 0 && Math.abs(px - p.cpIn.x)  <= R && Math.abs(py - p.cpIn.y)  <= R) return { type: 'cpIn',  ptIdx: i };
+      if (p.cpOut &&           Math.abs(px - p.cpOut.x) <= R && Math.abs(py - p.cpOut.y) <= R) return { type: 'cpOut', ptIdx: i };
+    }
+    return null;
   }
 
   /* ──────────────────────────────────────────
@@ -822,7 +1011,7 @@
   function applyResize(pos) {
     if (dsgnSelected === null || !dsgnResizeOrigin) return;
     const obj = dsgnObjects[dsgnSelected];
-    const o   = dsgnResizeOrigin;
+    const o   = dsgnResizeOrigin; // {x,y,w,h} normalized bounds at start
     let nx = o.x, ny = o.y, nw = o.w, nh = o.h;
     const r = dsgnResizeHandle;
     if (r === 'tl') { nx = pos.x; ny = pos.y; nw = (o.x+o.w)-pos.x; nh = (o.y+o.h)-pos.y; }
@@ -880,11 +1069,19 @@
   /* ──────────────────────────────────────────
      PEN / QUAD
   ────────────────────────────────────────── */
-  function cancelPen()  { penPath = []; penActive = false; if (activeMode === 'designer') renderDesigner(); }
+  function commitPen() {
+    if (penActive && penPath.length >= 2) {
+      dsgnSaveSnapshot();
+      dsgnObjects.push({ type:'pen', pts:penPath.slice(), color:dsgnStrokeColor, strokeWidth:dsgnStroke });
+    }
+    penPath = []; penActive = false;
+    if (activeMode === 'designer') renderDesigner();
+  }
+  function cancelPen()  { penPath = []; penActive = false; penMouseDown = false; penMousePos = null; if (activeMode === 'designer') renderDesigner(); }
   function cancelQuad() { quadPoints = []; if (activeMode === 'designer') renderDesigner(); }
 
   /* ──────────────────────────────────────────
-     KEYBOARD
+     KEYBOARD (delete / escape)
   ────────────────────────────────────────── */
   document.addEventListener('keydown', e => {
     if (activeMode !== 'designer') return;
@@ -916,7 +1113,7 @@
   }
 
   /* ──────────────────────────────────────────
-     CANVAS MOUSE
+     CANVAS MOUSE — selection & draw start
   ────────────────────────────────────────── */
   canvas.addEventListener('mousedown', e => {
     if (activeMode !== 'designer') return;
@@ -928,6 +1125,15 @@
     }
 
     if (dsgnTool === 'move') {
+      // Check pen anchor/handle hit on selected pen path
+      if (dsgnSelected !== null && dsgnObjects[dsgnSelected] && dsgnObjects[dsgnSelected].type === 'pen') {
+        const penHit = hitPenPt(dsgnObjects[dsgnSelected], pos.x, pos.y);
+        if (penHit) {
+          penEditTarget = { ...penHit, startPos: { x: pos.x, y: pos.y }, ptsOrigin: JSON.parse(JSON.stringify(dsgnObjects[dsgnSelected].pts)) };
+          canvas.style.cursor = 'move'; return;
+        }
+      }
+      // Check resize handle on primary selected object first
       if (dsgnSelected !== null) {
         const handle = hitHandle(dsgnObjects[dsgnSelected], pos.x, pos.y);
         if (handle) {
@@ -936,20 +1142,35 @@
           canvas.style.cursor = HANDLE_CURSORS[handle]; return;
         }
       }
+      // Hit-test objects (front to back)
       let hit = null;
       for (let i = dsgnObjects.length - 1; i >= 0; i--) {
         if (hitTest(dsgnObjects[i], pos.x, pos.y)) { hit = i; break; }
       }
-      const prevSel = dsgnSelected;
-      dsgnSelected = hit;
       if (hit !== null) {
-        if (hit !== prevSel) syncToolbarToSelection();
-        dsgnDragging  = true;
-        dsgnDragStart = { x: pos.x, y: pos.y };
-        dsgnObjOrigin = JSON.parse(JSON.stringify(dsgnObjects[hit]));
-        canvas.style.cursor = 'grabbing';
+        if (dsgnSelectedSet.has(hit) && dsgnSelectedSet.size > 1) {
+          // Start multi-drag: move all selected objects together
+          dsgnMultiDragging  = true;
+          dsgnMultiDragStart = { x: pos.x, y: pos.y };
+          dsgnMultiOrigins   = [...dsgnSelectedSet].map(i => ({ i, obj: JSON.parse(JSON.stringify(dsgnObjects[i])) }));
+          canvas.style.cursor = 'grabbing';
+        } else {
+          // Single select + drag
+          const prevSel = dsgnSelected;
+          dsgnSelected = hit;
+          dsgnSelectedSet = new Set([hit]);
+          if (hit !== prevSel) syncToolbarToSelection();
+          dsgnDragging  = true;
+          dsgnDragStart = { x: pos.x, y: pos.y };
+          dsgnObjOrigin = JSON.parse(JSON.stringify(dsgnObjects[hit]));
+          canvas.style.cursor = 'grabbing';
+        }
       } else {
-        updateMoveCursor();
+        // Start rubber-band marquee
+        dsgnSelected = null;
+        dsgnSelectedSet.clear();
+        dsgnMarquee = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+        canvas.style.cursor = 'crosshair';
       }
       updateToolbarPanels();
       renderDesigner(); return;
@@ -958,11 +1179,15 @@
     if (dsgnTool === 'pen') {
       const now = Date.now();
       if (penActive && now - penLastClick < 350 && penPath.length >= 2) {
+        // Double-click: commit
         dsgnSaveSnapshot();
         dsgnObjects.push({ type:'pen', pts:penPath.slice(), color:dsgnStrokeColor, strokeWidth:dsgnStroke });
-        cancelPen();
+        cancelPen(); penMouseDown = false;
       } else {
-        penActive = true; penPath.push({ x:pos.x, y:pos.y }); renderDesigner();
+        if (!penActive) penActive = true;
+        penPath.push({ x: pos.x, y: pos.y, cpIn: null, cpOut: null });
+        penMouseDown = true;
+        renderDesigner();
       }
       penLastClick = now; return;
     }
@@ -977,9 +1202,11 @@
       return;
     }
 
+    // Rect / circle / triangle — drag to draw
     dsgnSelected = null; dsgnDrawing = true; dsgnDrawStart = { x:pos.x, y:pos.y };
   });
 
+  /* Hover cursor feedback (only when not actively operating) */
   canvas.addEventListener('mousemove', e => {
     if (activeMode !== 'designer') return;
     if (dsgnDragging || dsgnResizing || dsgnDrawing) return;
@@ -995,9 +1222,65 @@
     updateMoveCursor(hoverHandle, hoverObj);
   });
 
+  /* ──────────────────────────────────────────
+     DOCUMENT-LEVEL MOUSE — drag / resize / draw
+  ────────────────────────────────────────── */
   document.addEventListener('mousemove', e => {
     if (activeMode !== 'designer') return;
     const pos = getPos(e);
+
+    // Always update pen rubber-band cursor
+    if (penActive) { penMousePos = pos; }
+
+    // Pen point being placed (drag to set handles)
+    if (penMouseDown && penPath.length > 0) {
+      const last = penPath[penPath.length - 1];
+      const dx = pos.x - last.x, dy = pos.y - last.y;
+      if (Math.hypot(dx, dy) > 3) {
+        last.cpOut = { x: last.x + dx, y: last.y + dy };
+        last.cpIn  = { x: last.x - dx, y: last.y - dy };
+      }
+      renderDesigner(); return;
+    }
+
+    // Pen edit handle drag (move tool, pen path selected)
+    if (penEditTarget && dsgnSelected !== null) {
+      const obj = dsgnObjects[dsgnSelected];
+      const dx = pos.x - penEditTarget.startPos.x, dy = pos.y - penEditTarget.startPos.y;
+      const i = penEditTarget.ptIdx;
+      const orig = penEditTarget.ptsOrigin[i];
+      if (penEditTarget.type === 'anchor') {
+        obj.pts[i].x = orig.x + dx; obj.pts[i].y = orig.y + dy;
+        if (orig.cpIn)  obj.pts[i].cpIn  = { x: orig.cpIn.x  + dx, y: orig.cpIn.y  + dy };
+        if (orig.cpOut) obj.pts[i].cpOut = { x: orig.cpOut.x + dx, y: orig.cpOut.y + dy };
+      } else if (penEditTarget.type === 'cpOut') {
+        obj.pts[i].cpOut = { x: orig.cpOut.x + dx, y: orig.cpOut.y + dy };
+        const hdx = obj.pts[i].cpOut.x - obj.pts[i].x, hdy = obj.pts[i].cpOut.y - obj.pts[i].y;
+        obj.pts[i].cpIn = { x: obj.pts[i].x - hdx, y: obj.pts[i].y - hdy };
+      } else if (penEditTarget.type === 'cpIn') {
+        obj.pts[i].cpIn = { x: orig.cpIn.x + dx, y: orig.cpIn.y + dy };
+        const hdx = obj.pts[i].cpIn.x - obj.pts[i].x, hdy = obj.pts[i].cpIn.y - obj.pts[i].y;
+        obj.pts[i].cpOut = { x: obj.pts[i].x - hdx, y: obj.pts[i].y - hdy };
+      }
+      renderDesigner(); return;
+    }
+
+    if (penActive) { renderDesigner(); return; }
+
+    if (dsgnMarquee) {
+      dsgnMarquee.x2 = pos.x; dsgnMarquee.y2 = pos.y;
+      renderDesigner(); return;
+    }
+
+    if (dsgnMultiDragging) {
+      const dx = pos.x - dsgnMultiDragStart.x, dy = pos.y - dsgnMultiDragStart.y;
+      dsgnMultiOrigins.forEach(({ i, obj }) => {
+        const target = dsgnObjects[i];
+        if (obj.pts) { target.pts = obj.pts.map(p => ({ x: p.x+dx, y: p.y+dy })); }
+        else { target.x = obj.x + dx; target.y = obj.y + dy; }
+      });
+      renderDesigner(); return;
+    }
 
     if (dsgnDragging && dsgnSelected !== null) {
       const obj = dsgnObjects[dsgnSelected];
@@ -1022,6 +1305,51 @@
 
   document.addEventListener('mouseup', e => {
     if (activeMode !== 'designer') return;
+
+    // Finalize dragged pen handle while placing a point
+    if (penMouseDown) {
+      penMouseDown = false;
+      if (penPath.length > 0) {
+        const last = penPath[penPath.length - 1];
+        if (last.cpOut && Math.hypot(last.cpOut.x - last.x, last.cpOut.y - last.y) < 4) {
+          last.cpIn = null; last.cpOut = null; // too small a drag — keep as sharp corner
+        }
+      }
+      renderDesigner(); return;
+    }
+
+    // Finalize pen edit handle drag
+    if (penEditTarget) {
+      dsgnSaveSnapshot();
+      penEditTarget = null;
+      updateMoveCursor(); renderDesigner(); return;
+    }
+
+    if (dsgnMarquee) {
+      const mx = Math.min(dsgnMarquee.x1, dsgnMarquee.x2);
+      const my = Math.min(dsgnMarquee.y1, dsgnMarquee.y2);
+      const mw = Math.abs(dsgnMarquee.x2 - dsgnMarquee.x1);
+      const mh = Math.abs(dsgnMarquee.y2 - dsgnMarquee.y1);
+      dsgnMarquee = null;
+      if (mw > 4 || mh > 4) {
+        const hits = dsgnObjects.reduce((acc, obj, i) => {
+          const b = getObjBBox(obj);
+          if (b.x < mx+mw && b.x+b.w > mx && b.y < my+mh && b.y+b.h > my) acc.push(i);
+          return acc;
+        }, []);
+        dsgnSelectedSet = new Set(hits);
+        dsgnSelected = hits.length === 1 ? hits[0] : (hits.length > 1 ? hits[hits.length - 1] : null);
+        if (dsgnSelected !== null) syncToolbarToSelection();
+        updateToolbarPanels();
+      }
+      updateMoveCursor(); renderDesigner(); return;
+    }
+
+    if (dsgnMultiDragging) {
+      dsgnSaveSnapshot();
+      dsgnMultiDragging = false; dsgnMultiDragStart = null; dsgnMultiOrigins = [];
+      updateMoveCursor(); renderDesigner(); return;
+    }
 
     if (dsgnDragging) {
       dsgnSaveSnapshot();
